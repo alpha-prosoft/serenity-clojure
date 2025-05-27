@@ -1,0 +1,55 @@
+{:deps {org.clojure/clojure {:mvn/version "1.12.4"}
+        
+        ;; JUnit 5 Platform
+        org.junit.jupiter/junit-jupiter-api {:mvn/version "6.0.1"}
+        org.junit.jupiter/junit-jupiter-engine {:mvn/version "6.0.1"}
+        org.junit.platform/junit-platform-launcher {:mvn/version "6.0.1"}
+        org.junit.platform/junit-platform-console {:mvn/version "6.0.1"}
+        
+        ;; Serenity BDD
+        net.serenity-bdd/serenity-core {:mvn/version "5.0.2"}
+        net.serenity-bdd/serenity-junit5 {:mvn/version "5.0.2"}
+        net.serenity-bdd/serenity-screenplay {:mvn/version "5.0.2"}
+        net.serenity-bdd/serenity-screenplay-webdriver {:mvn/version "5.0.2"}
+        net.serenity-bdd/serenity-rest-assured {:mvn/version "5.0.2"}
+        net.serenity-bdd/serenity-cli {:mvn/version "5.0.2"}
+        
+        ;; Playwright
+        com.microsoft.playwright/playwright {:mvn/version "1.57.0"}
+        
+        ;; REST Assured
+        io.rest-assured/rest-assured {:mvn/version "6.0.0"}
+        
+        ;; Logging (required by Serenity)
+        org.slf4j/slf4j-simple {:mvn/version "2.0.17"}
+        ch.qos.logback/logback-classic {:mvn/version "1.5.23"}
+        
+        ;; JSON parsing
+        org.clojure/data.json {:mvn/version "2.5.1"}}
+ 
+ :paths ["src" "classes" "resources"]
+ 
+ :aliases 
+ {:clean
+  {:main-opts ["-e" "(require '[clojure.java.io :as io])(defn delete-recursively [f] (when (.exists (io/file f)) (when (.isDirectory (io/file f)) (doseq [child (.listFiles (io/file f))] (delete-recursively child))) (.delete (io/file f))))(delete-recursively \"target\")(println \"Cleaned target directory\")"]}
+  
+  :test 
+  {:extra-paths ["test"]}
+  :it
+  {:extra-paths ["test"]
+   :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
+                lambdaisland/kaocha-junit-xml {:mvn/version "1.17.101"}}
+   :main-opts ["-m" "kaocha.runner"]}
+  
+  :aggregate-reports
+   {:main-opts ["-e" "(require '[testing.junit :as junit])(junit/generate-reports)(System/exit 0)"]}
+   
+   :build
+   {:deps {io.github.clojure/tools.build {:git/tag "v0.10.5" :git/sha "2a21b7a"}}
+    :ns-default build}
+   
+   :deploy
+   {:extra-deps {slipset/deps-deploy {:mvn/version "0.2.2"}}
+    :exec-fn deps-deploy.deps-deploy/deploy
+    :exec-args {:installer :remote
+                :sign-releases? false}}}}

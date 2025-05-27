@@ -1,0 +1,9 @@
+.classes
+.cpcache
+.clj-kondo
+*~
+#*
+classes
+target
+.lsp
+target

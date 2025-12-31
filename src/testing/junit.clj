@@ -87,6 +87,24 @@
            (SerenityRest/reset)
            (throw e#))))))
 
+(defmacro ui-step
+  "Execute a UI step with automatic before/after screenshots.
+   Takes a page object, description, and function to execute.
+   Automatically captures screenshots before and after the action."
+  [page description f]
+  `(step ~description
+     (fn []
+       (let [safe-desc# (clojure.string/replace ~description #"[^a-zA-Z0-9\s-]" "")
+             slug# (clojure.string/replace safe-desc# #"\s+" "-")]
+         ;; Take before screenshot
+         (take-screenshot ~page (str slug# "-before"))
+         
+         ;; Execute the step action
+         (let [result# (~f)]
+           ;; Take after screenshot
+           (take-screenshot ~page (str slug# "-after"))
+           result#)))))
+
 (defn start-browser []
   "Start Playwright browser and return page instance"
   (let [pw (Playwright/create)

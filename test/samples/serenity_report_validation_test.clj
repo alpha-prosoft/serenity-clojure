@@ -10,7 +10,7 @@
             [clojure.java.io :as io]
             [clojure.data.json :as json]
             [clojure.string :as str]
-            [testing.junit :refer [with-serenity step api-step take-screenshot generate-reports]])
+            [testing.junit :refer [with-serenity step ui-step api-step take-screenshot generate-reports]])
   (:import [net.serenitybdd.rest SerenityRest]
            [io.restassured.http ContentType Header]
            [com.microsoft.playwright Page$WaitForLoadStateOptions]
@@ -20,26 +20,24 @@
   "Test that combines UI interactions with screenshots and API calls
    to validate that all elements are properly captured in Serenity reports.
    This test verifies:
-   - Screenshots are captured at each UI step
+   - Screenshots are captured before and after each UI step
    - API calls are logged with full request/response details
    - Both UI and API steps appear in the same test report
-   - Data flows between UI and API steps"
+   - Data flows between UI and API steps
+   - Nested step structure for better organization"
   (with-serenity [page]
     
-    ;; UI Step 1: Navigate and capture initial screenshot
-    (step "Navigate to httpbin.org homepage"
+    ;; UI Step 1: Navigate and capture screenshots
+    (ui-step page "Navigate to httpbin.org homepage"
       #(do
          (.navigate page "https://httpbin.org")
-         (.waitForLoadState page LoadState/NETWORKIDLE)
-         (take-screenshot page "01-httpbin-homepage")))
+         (.waitForLoadState page LoadState/NETWORKIDLE)))
     
-    ;; UI Step 2: Verify page loaded with screenshot
-    (step "Verify httpbin homepage loaded correctly"
-      #(do
-         (let [title (.title page)]
-           (is (str/includes? title "httpbin") 
-               "Page title should contain 'httpbin'"))
-         (take-screenshot page "02-homepage-verified")))
+    ;; UI Step 2: Verify page loaded with screenshots
+    (ui-step page "Verify httpbin homepage loaded correctly"
+      #(let [title (.title page)]
+         (is (str/includes? title "httpbin") 
+             "Page title should contain 'httpbin'")))
     
     ;; API Step 1: GET request - verify request/response logging
     (api-step "Execute GET request to httpbin with query parameters"
@@ -60,11 +58,10 @@
          (println "✓ GET request successful with query parameters")))
     
     ;; UI Step 3: Navigate to a different page
-    (step "Navigate to httpbin GET endpoint documentation"
+    (ui-step page "Navigate to httpbin GET endpoint documentation"
       #(do
          (.navigate page "https://httpbin.org/#/HTTP_Methods/get_get")
-         (Thread/sleep 2000)
-         (take-screenshot page "03-get-endpoint-page")))
+         (Thread/sleep 2000)))
     
     ;; API Step 2: POST request with JSON data
     (api-step "Execute POST request with JSON body"
@@ -89,11 +86,10 @@
          (println "✓ POST request successful with nested JSON")))
     
     ;; UI Step 4: Navigate to POST endpoint page
-    (step "Navigate to POST endpoint documentation"
+    (ui-step page "Navigate to POST endpoint documentation"
       #(do
          (.navigate page "https://httpbin.org/#/HTTP_Methods/post_post")
-         (Thread/sleep 1500)
-         (take-screenshot page "04-post-endpoint-page")))
+         (Thread/sleep 1500)))
     
     ;; API Step 3: PUT request with headers
     (api-step "Execute PUT request with custom headers"
@@ -114,10 +110,8 @@
          (println "✓ PUT request successful with custom headers")))
     
     ;; UI Step 5: Take final screenshot
-    (step "Capture final state screenshot"
-      #(do
-         (take-screenshot page "05-final-state")
-         (println "✓ Combined UI+API test completed successfully")))
+    (ui-step page "Capture final state"
+      #(println "✓ Combined UI+API test completed successfully"))
     
     ;; API Step 4: DELETE request
     (api-step "Execute DELETE request"

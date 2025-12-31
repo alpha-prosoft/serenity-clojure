@@ -4,7 +4,7 @@
   (:require [clojure.test :as t]
             [clojure.java.io :as io])
   (:import [net.serenitybdd.rest SerenityRest]
-           [com.microsoft.playwright Playwright BrowserType$LaunchOptions Page]
+           [com.microsoft.playwright Playwright BrowserType$LaunchOptions Page Page$ScreenshotOptions]
            [java.nio.file Paths]
            [java.io File]
            [net.thucydides.core.steps StepEventBus BaseStepListener]
@@ -27,40 +27,37 @@
   "Capture screenshot and attach to current step.
    Returns the filename of the saved screenshot."
   [^Page page description]
-  (let [output-dir (or (System/getProperty "serenity.outputDirectory") 
-                       "target/site/serenity")
-        timestamp (System/currentTimeMillis)
-        counter (swap! screenshot-counter inc)
-        filename (str (clojure.string/replace description #"\s+" "_") 
-                     "-" timestamp "-" counter ".png")
-        filepath (str output-dir "/" filename)]
-    (ensure-dir output-dir)
-    (.screenshot page (into-array [(Paths/get filepath (into-array String []))]))
-    (println (str "📸 Screenshot saved: " filename))
-    
-    ;; Record screenshot in Serenity
-    (try
-      (let [screenshot-bytes (java.nio.file.Files/readAllBytes 
-                               (Paths/get filepath (into-array String [])))]
-        (.recordScreenshot (.getStepEventBus (StepEventBus/getParallelEventBus)) 
-                          screenshot-bytes))
-      (catch Exception e
-        (println "Warning: Could not record screenshot in Serenity:" (.getMessage e))))
-    
-    filename))
+  (try
+    (let [bus (StepEventBus/getEventBus)
+          timestamp (System/currentTimeMillis)
+          counter (swap! screenshot-counter inc)
+          filename (str (clojure.string/replace description #"\s+" "_") 
+                       "-" timestamp "-" counter ".png")
+          screenshot-bytes (.screenshot page)]
+      
+      ;; Register screenshot with StepEventBus - it handles file writing and attachment
+      (.recordScreenshot bus filename screenshot-bytes)
+      
+      (println (str "📸 Screenshot attached: " filename))
+      filename)
+    (catch Exception e
+      (println (str "Failed to take screenshot: " (.getMessage e)))
+      nil)))
 
 (defn init-serenity []
-  "Initialize Serenity BDD environment"
-  (let [event-bus (StepEventBus/getParallelEventBus)]
-    (.registerListener event-bus (BaseStepListener. 
-                                    (or (System/getProperty "serenity.outputDirectory")
-                                        "target/site/serenity")))))
+  "Initialize Serenity BDD environment and return the listener"
+  (let [event-bus (StepEventBus/getEventBus)
+        output-dir (File. (or (System/getProperty "serenity.outputDirectory")
+                              "target/site/serenity"))
+        listener (BaseStepListener. output-dir)]
+    (.registerListener event-bus listener)
+    listener))
 
 (defmacro step
   "Execute a test step with automatic Serenity reporting.
    Description will appear in the generated reports."
   [description f]
-  `(let [event-bus# (StepEventBus/getParallelEventBus)
+  `(let [event-bus# (StepEventBus/getEventBus)
          step-desc# (ExecutedStepDescription/withTitle ~description)
          start-time# (System/currentTimeMillis)]
      (try
@@ -71,7 +68,7 @@
          (println (str "✓ Step completed (" (- (System/currentTimeMillis) start-time#) "ms)"))
          result#)
        (catch Exception e#
-         (let [failure# (StepFailure/forException e#)]
+         (let [failure# (StepFailure. step-desc# e#)]
            (.stepFailed event-bus# failure#))
          (println (str "✗ Step failed: " (.getMessage e#)))
          (throw e#)))))
@@ -126,7 +123,7 @@
   [[page-binding] & body]
   `(let [browser-map# (start-browser)
          ~page-binding (:page browser-map#)
-         event-bus# (StepEventBus/getParallelEventBus)
+         event-bus# (StepEventBus/getEventBus)
          story# (Story/withIdAndPathAndFeature 
                   "samples" 
                   "Samples" 
@@ -136,19 +133,48 @@
          test-name# (or (some-> t/*testing-vars* first meta :name str)
                        "Unknown Test")]
      (try
-       (init-serenity)
-       (.testStarted event-bus# test-name# story#)
-       (println (str "\n" (apply str (repeat 60 "=")) "\n"
-                    "Test: " test-name# "\n"
-                    (apply str (repeat 60 "=")) "\n"))
-       (let [result# (do ~@body)]
-         (.testFinished event-bus#)
-         (println (str "\n✓ Test passed: " test-name# "\n"))
-         result#)
-       (catch Exception e#
-         (.testFailed event-bus# e#)
-         (println (str "\n✗ Test failed: " test-name# "\n"))
-         (throw e#))
+       (let [listener# (init-serenity)]
+         (.testStarted event-bus# test-name# story#)
+         (println (str "\n" (apply str (repeat 60 "=")) "\n"
+                      "Test: " test-name# "\n"
+                      (apply str (repeat 60 "=")) "\n"))
+         (try
+           (let [result# (do ~@body)]
+             (.testFinished event-bus#)
+             
+              ;; Write JSON report
+              (try
+                (let [outcome# (.getCurrentTestOutcome listener#)]
+                  (when outcome#
+                    (let [output-dir# (File. (or (System/getProperty "serenity.outputDirectory")
+                                                 "target/site/serenity"))
+                          reporter# (JSONTestOutcomeReporter.)]
+                      (ensure-dir (.getPath output-dir#))
+                      (.setOutputDirectory reporter# output-dir#)
+                      (.generateReportFor reporter# outcome#))))
+                (catch Exception e#
+                  (println "Warning: Could not write JSON report:" (.getMessage e#))))
+             
+             (println (str "\n✓ Test passed: " test-name# "\n"))
+             result#)
+           (catch Exception e#
+             (.testFailed event-bus# e#)
+             
+              ;; Write JSON report even on failure
+              (try
+                (let [outcome# (.getCurrentTestOutcome listener#)]
+                  (when outcome#
+                    (let [output-dir# (File. (or (System/getProperty "serenity.outputDirectory")
+                                                 "target/site/serenity"))
+                          reporter# (JSONTestOutcomeReporter.)]
+                      (ensure-dir (.getPath output-dir#))
+                      (.setOutputDirectory reporter# output-dir#)
+                      (.generateReportFor reporter# outcome#))))
+                (catch Exception e2#
+                  (println "Warning: Could not write JSON report:" (.getMessage e2#))))
+             
+             (println (str "\n✗ Test failed: " test-name# "\n"))
+             (throw e#))))
        (finally
          (stop-browser browser-map#)
          (.dropAllListeners event-bus#)))))
@@ -160,7 +186,6 @@
                            "target/site/serenity")
         output-dir (File. output-dir-str)
         source-path (Paths/get output-dir-str (into-array String []))
-        dest-path (Paths/get output-dir-str (into-array String []))
         project-name (or (System/getProperty "serenity.project.name") "Serenity Clojure")]
     (ensure-dir output-dir-str)
     
@@ -171,8 +196,8 @@
     (println (str "  Project: " project-name))
     
     (try
-      (let [generator (CLIAggregateReportGenerator. project-name "" "" "" "" "" "" "")]
-        (.generateReportsFrom generator source-path dest-path))
+      (let [generator (CLIAggregateReportGenerator. source-path source-path "" "" "" "" "" "" "" "")]
+        (.generateReportsFrom generator source-path))
       (println (str "  ✓ HTML reports generated"))
       (println (str "  Open: " output-dir-str "/index.html"))
       (println (str "========================================\n"))

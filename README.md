@@ -177,23 +177,453 @@ serenity.console.colors=true
 
 ## Running Tests
 
+### Run all tests
+```bash
+clojure -M:test -e "(require 'clojure.test)(clojure.test/run-all-tests #\"samples.*\")"
+```
+
 ### Run specific namespace
 ```bash
-clojure -M:test -e "(require '[my-app.tests])(clojure.test/run-tests 'my-app.tests)"
+clojure -M:test -e "(require '[samples.demo-test])(clojure.test/run-tests 'samples.demo-test)"
+```
+
+### Run with Kaocha (recommended)
+```bash
+clojure -M:it
 ```
 
 ### Generate reports
+```bash
+clojure -M:aggregate-reports
+```
+
+Or manually:
 ```bash
 clojure -M -e "(require '[testing.junit :as junit])(junit/generate-reports)"
 ```
 
 ### View reports
 ```bash
-# Open in browser
+# Open in browser (macOS)
 open target/site/serenity/index.html
 
-# Or use Python
+# Linux
+xdg-open target/site/serenity/index.html
+
+# Or use Python web server
 python3 -m http.server 8000 --directory target/site/serenity
+# Then visit http://localhost:8000
+```
+
+## Advanced Examples
+
+### Complete Test Workflow - From Writing to Validation
+
+Here's a complete workflow that demonstrates how to write comprehensive tests, generate reports, and validate that all artifacts are properly created:
+
+```bash
+# 1. Clean previous test outputs
+clojure -M:clean
+
+# 2. Run your tests
+clojure -M:test -e "(require '[samples.serenity-report-validation-test])(clojure.test/run-tests 'samples.serenity-report-validation-test)"
+
+# 3. Generate HTML reports
+clojure -M:aggregate-reports
+
+# 4. View reports
+open target/site/serenity/index.html
+```
+
+### Combined UI and API Testing
+
+Test that combines browser automation with API calls in a single scenario:
+
+```clojure
+(ns my-app.integration-test
+  (:require [clojure.test :refer [deftest is]]
+            [testing.junit :refer [with-serenity step api-step take-screenshot]])
+  (:import [net.serenitybdd.rest SerenityRest]
+           [io.restassured.http ContentType]
+           [com.microsoft.playwright Page$WaitForLoadStateOptions LoadState]))
+
+(deftest combined-ui-api-test
+  (with-serenity [page]
+    
+    ;; UI Testing - Navigate and capture screenshots
+    (step "Navigate to application homepage"
+      #(do
+         (.navigate page "https://example.com")
+         (.waitForLoadState page LoadState/NETWORKIDLE)
+         (take-screenshot page "01-homepage")))
+    
+    (step "Verify page loaded correctly"
+      #(do
+         (is (clojure.string/includes? (.title page) "Example"))
+         (take-screenshot page "02-verified")))
+    
+    ;; API Testing - Call REST endpoints with full logging
+    (api-step "Fetch data from API with query parameters"
+      #(let [response (-> (SerenityRest/given)
+                          (.baseUri "https://api.example.com")
+                          (.queryParam "userId" "123")
+                          (.when)
+                          (.get "/data")
+                          (.then)
+                          (.statusCode 200)
+                          (.extract)
+                          (.response))]
+         (is (some? (-> response .jsonPath (.getString "id")))))
+    
+    ;; More API testing with POST request
+    (api-step "Create new resource via API"
+      #(-> (SerenityRest/given)
+           (.baseUri "https://api.example.com")
+           (.contentType ContentType/JSON)
+           (.body {"name" "Test" "value" 42})
+           (.when)
+           (.post "/resources")
+           (.then)
+           (.statusCode 201)))
+    
+    ;; Continue UI interaction based on API data
+    (step "Navigate to details page"
+      #(do
+         (.navigate page "https://example.com/details")
+         (take-screenshot page "03-details-page")))))
+```
+
+This test will generate a Serenity report that includes:
+- All UI navigation steps with screenshots
+- Full API request/response details (URL, headers, body, status)
+- Step-by-step execution timeline
+- Combined test duration and statistics
+
+### Testing with Multiple Screenshots - Gallery Validation
+
+Create comprehensive screenshot galleries to document visual test journeys:
+
+```clojure
+(deftest visual-journey-test
+  (with-serenity [page]
+    
+    (step "Initial page load"
+      #(do
+         (.navigate page "https://example.com")
+         (take-screenshot page "01-initial-load")))
+    
+    (step "User interaction - Login form"
+      #(do
+         (.fill page "#username" "testuser")
+         (.fill page "#password" "password")
+         (take-screenshot page "02-login-filled")
+         (.click page "#login-button")
+         (take-screenshot page "03-after-login")))
+    
+    (step "Navigate through application sections"
+      #(do
+         (.click page "a:has-text(\"Dashboard\")")
+         (take-screenshot page "04-dashboard")
+         (.click page "a:has-text(\"Profile\")")
+         (take-screenshot page "05-profile")
+         (.click page "a:has-text(\"Settings\")")
+         (take-screenshot page "06-settings")))
+    
+    (step "Final state verification"
+      #(do
+         (.click page "#logout")
+         (take-screenshot page "07-logged-out")))))
+```
+
+**Result**: Serenity generates a screenshot gallery showing the complete user journey with 7+ images, all clickable in the HTML report.
+
+### API-Only Testing with Full Request/Response Logging
+
+Focus on REST API testing with automatic request/response capture:
+
+```clojure
+(deftest comprehensive-api-test
+  (with-serenity [page]
+    
+    (api-step "GET request with headers and query params"
+      #(let [response (-> (SerenityRest/given)
+                          (.baseUri "https://api.example.com")
+                          (.header "X-API-Key" "test-key")
+                          (.queryParam "filter" "active")
+                          (.queryParam "limit" 10)
+                          (.when)
+                          (.get "/users")
+                          (.then)
+                          (.statusCode 200)
+                          (.extract)
+                          (.response))]
+         (is (> (count (-> response .jsonPath (.getList "data"))) 0))))
+    
+    (api-step "POST request with JSON body and custom headers"
+      #(let [data {"name" "New User" 
+                   "email" "test@example.com"
+                   "metadata" {"source" "test" "version" "1.0"}}
+             response (-> (SerenityRest/given)
+                          (.baseUri "https://api.example.com")
+                          (.contentType ContentType/JSON)
+                          (.header "X-Request-ID" "req-123")
+                          (.body data)
+                          (.when)
+                          (.post "/users")
+                          (.then)
+                          (.statusCode 201)
+                          (.extract)
+                          (.response))]
+         (is (= "New User" (-> response .jsonPath (.getString "name"))))))
+    
+    (api-step "PUT request to update resource"
+      #(-> (SerenityRest/given)
+           (.baseUri "https://api.example.com")
+           (.contentType ContentType/JSON)
+           (.body {"status" "updated"})
+           (.when)
+           (.put "/users/1")
+           (.then)
+           (.statusCode 200)))
+    
+    (api-step "DELETE request"
+      #(-> (SerenityRest/given)
+           (.baseUri "https://api.example.com")
+           (.when)
+           (.delete "/users/1")
+           (.then)
+           (.statusCode 204)))))
+```
+
+**API Logging includes**:
+- Request URL, method, headers
+- Request body (formatted JSON)
+- Response status, headers
+- Response body (formatted JSON)
+- Request/response timing
+
+### Report Validation - Ensuring Proper Generation
+
+Test that combines browser automation with API calls in a single scenario:
+
+```clojure
+(ns my-app.integration-test
+  (:require [clojure.test :refer [deftest is]]
+            [testing.junit :refer [with-serenity step api-step take-screenshot]])
+  (:import [net.serenitybdd.rest SerenityRest]
+           [io.restassured.http ContentType]
+           [com.microsoft.playwright Page$WaitForLoadStateOptions LoadState]))
+
+(deftest combined-ui-api-test
+  (with-serenity [page]
+    
+    ;; UI Testing
+    (step "Navigate to application homepage"
+      #(do
+         (.navigate page "https://example.com")
+         (.waitForLoadState page LoadState/NETWORKIDLE)
+         (take-screenshot page "homepage")))
+    
+    (step "Verify page loaded"
+      #(do
+         (is (clojure.string/includes? (.title page) "Example"))
+         (take-screenshot page "verified")))
+    
+    ;; API Testing
+    (api-step "Fetch data from API"
+      #(let [response (-> (SerenityRest/given)
+                          (.baseUri "https://api.example.com")
+                          (.when)
+                          (.get "/data")
+                          (.then)
+                          (.statusCode 200)
+                          (.extract)
+                          (.response))]
+         (is (some? (-> response .jsonPath (.getString "id"))))))
+    
+    ;; More UI interaction based on API data
+    (step "Navigate to details page"
+      #(do
+         (.navigate page "https://example.com/details")
+         (take-screenshot page "details-page")))))
+```
+
+### API-Only Testing
+
+Focus on REST API testing with full request/response logging:
+
+```clojure
+(deftest api-crud-test
+  (with-serenity [page]
+    
+    (api-step "Create new resource"
+      #(let [data {"name" "Test" "value" 123}
+             response (-> (SerenityRest/given)
+                          (.baseUri "https://api.example.com")
+                          (.contentType ContentType/JSON)
+                          (.body data)
+                          (.when)
+                          (.post "/resources")
+                          (.then)
+                          (.statusCode 201)
+                          (.extract)
+                          (.response))]
+         (is (some? (-> response .jsonPath (.getInt "id"))))))
+    
+    (api-step "Read resource"
+      #(-> (SerenityRest/given)
+           (.baseUri "https://api.example.com")
+           (.when)
+           (.get "/resources/1")
+           (.then)
+           (.statusCode 200)))
+    
+    (api-step "Update resource"
+      #(-> (SerenityRest/given)
+           (.baseUri "https://api.example.com")
+           (.contentType ContentType/JSON)
+           (.body {"name" "Updated"})
+           (.when)
+           (.put "/resources/1")
+           (.then)
+           (.statusCode 200)))
+    
+    (api-step "Delete resource"
+      #(-> (SerenityRest/given)
+           (.baseUri "https://api.example.com")
+           (.when)
+           (.delete "/resources/1")
+           (.then)
+           (.statusCode 204)))))
+```
+
+### Multiple Screenshots and Gallery
+
+Capture multiple screenshots to create a visual test journey:
+
+```clojure
+(deftest visual-journey-test
+  (with-serenity [page]
+    
+    (step "Step 1: Homepage"
+      #(do
+         (.navigate page "https://example.com")
+         (take-screenshot page "01-homepage")))
+    
+    (step "Step 2: Login"
+      #(do
+         (.fill page "#username" "testuser")
+         (.fill page "#password" "password")
+         (take-screenshot page "02-before-login")
+         (.click page "#login-button")
+         (take-screenshot page "03-after-login")))
+    
+    (step "Step 3: Navigate sections"
+      #(do
+         (.click page "a:has-text(\"Dashboard\")")
+         (take-screenshot page "04-dashboard")
+         (.click page "a:has-text(\"Profile\")")
+         (take-screenshot page "05-profile")))
+    
+    (step "Step 4: Logout"
+      #(do
+         (.click page "#logout")
+         (take-screenshot page "06-logged-out")))))
+```
+
+### Report Validation
+
+Validate that Serenity reports are properly generated with all artifacts:
+
+```clojure
+(ns my-app.validation-test
+  (:require [clojure.test :refer [deftest is testing]]
+            [clojure.java.io :as io]
+            [clojure.data.json :as json]
+            [testing.junit :refer [generate-reports]]))
+
+(defn validate-screenshots []
+  "Check that screenshot files exist"
+  (let [output-dir "target/site/serenity"
+        png-files (filter #(.endsWith (.getName %) ".png")
+                         (file-seq (io/file output-dir)))]
+    (println (str "Screenshots found: " (count png-files)))
+    (is (> (count png-files) 0) "Screenshots should be captured")))
+
+(defn validate-json-reports []
+  "Verify JSON test reports have correct structure"
+  (let [output-dir "target/site/serenity"
+        json-files (filter #(.endsWith (.getName %) ".json")
+                          (file-seq (io/file output-dir)))]
+    (doseq [json-file json-files]
+      (when (.isFile json-file)
+        (let [content (json/read-str (slurp json-file) :key-fn keyword)]
+          (is (contains? content :testSteps) "Report should have test steps")
+          (is (contains? content :title) "Report should have title")
+          
+          ;; Check for screenshots in steps
+          (let [screenshots (filter #(contains? % :screenshot) 
+                                   (:testSteps content))]
+            (println (str "Screenshots in report: " (count screenshots))))
+          
+          ;; Check for API calls
+          (let [api-calls (filter #(contains? % :restQuery) 
+                                 (:testSteps content))]
+            (println (str "API calls in report: " (count api-calls)))))))))
+
+(defn validate-html-report []
+  "Check that HTML report exists"
+  (let [index-file (io/file "target/site/serenity/index.html")]
+    (is (.exists index-file) "HTML report should be generated")
+    (println (str "Report location: " (.getAbsolutePath index-file)))))
+
+(deftest report-validation-test
+  (testing "Validate report artifacts"
+    (validate-screenshots)
+    (validate-json-reports)
+    (validate-html-report)))
+```
+
+### Complete Test Workflow
+
+Here's a complete workflow from writing tests to viewing reports:
+
+```bash
+# 1. Clean previous test outputs
+clojure -M:clean
+
+# 2. Run your tests
+clojure -M:it
+
+# 3. Generate HTML reports
+clojure -M:aggregate-reports
+
+# 4. View reports
+open target/site/serenity/index.html
+```
+
+### What Gets Captured in Reports
+
+**Serenity reports automatically include:**
+
+1. **Test Steps**: Every `step` and `api-step` call with timing and status
+2. **Screenshots**: All images captured via `take-screenshot` with thumbnails and galleries
+3. **API Calls**: Full HTTP request/response details including:
+   - Request URL, method, headers, body
+   - Response status, headers, body
+   - Timing information
+4. **Failures**: Stack traces and error messages
+5. **Test Metadata**: Duration, timestamps, test structure
+6. **Aggregates**: Summary statistics across all tests
+
+**Report Structure:**
+```
+target/site/serenity/
+├── index.html              # Main dashboard
+├── *.json                  # Test result data
+├── *.png                   # Screenshots
+├── serenity.css           # Styling
+└── serenity.js            # Interactive features
 ```
 
 ## Design Philosophy

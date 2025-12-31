@@ -3,7 +3,8 @@
             [testing.junit :refer [with-serenity step api-step take-screenshot]])
   (:import [net.serenitybdd.rest SerenityRest]
            [io.restassured.http ContentType]
-           [com.microsoft.playwright Page$WaitForLoadStateOptions LoadState]))
+           [com.microsoft.playwright Page$WaitForLoadStateOptions]
+           [com.microsoft.playwright.options LoadState]))
 
 (deftest comprehensive-test
   (with-serenity [page]
@@ -42,7 +43,7 @@
       #(let [response (-> (SerenityRest/given)
                           (.baseUri "https://jsonplaceholder.typicode.com")
                           (.when)
-                          (.get "/users/1")
+                          (.get "/users/1" (into-array Object []))
                           (.then)
                           (.statusCode 200)
                           (.extract)
@@ -59,7 +60,7 @@
                           (.contentType ContentType/JSON)
                           (.body post-data)
                           (.when)
-                          (.post "/posts")
+                          (.post "/posts" (into-array Object []))
                           (.then)
                           (.statusCode 201)
                           (.extract)

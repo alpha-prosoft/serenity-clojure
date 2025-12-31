@@ -88,22 +88,49 @@
            (throw e#))))))
 
 (defmacro ui-step
-  "Execute a UI step with automatic before/after screenshots.
+  "Execute a UI step with automatic before/after screenshots using nested child steps.
    Takes a page object, description, and function to execute.
-   Automatically captures screenshots before and after the action."
+   Creates a parent step with a wrapper step containing both Before and After screenshots."
   [page description f]
-  `(step ~description
-     (fn []
+  `(let [event-bus# (StepEventBus/getEventBus)
+         step-desc# (ExecutedStepDescription/withTitle ~description)
+         start-time# (System/currentTimeMillis)]
+     (try
+       (println (str "▶ Step: " ~description))
+       (.stepStarted event-bus# step-desc#)
+       
        (let [safe-desc# (clojure.string/replace ~description #"[^a-zA-Z0-9\s-]" "")
-             slug# (clojure.string/replace safe-desc# #"\s+" "-")]
-         ;; Take before screenshot
+             slug# (clojure.string/replace safe-desc# #"\s+" "-")
+             before-step# (ExecutedStepDescription/withTitle (str ~description " - Before"))
+             after-step# (ExecutedStepDescription/withTitle (str ~description " - After"))]
+         
+         ;; Start Before step
+         (.stepStarted event-bus# before-step#)
          (take-screenshot ~page (str slug# "-before"))
          
-         ;; Execute the step action
+         ;; Start After step while Before is still active
+         ;; This makes After a child of Before (nested one level deeper)
+         (.stepStarted event-bus# after-step#)
+         
+         ;; Execute the main action between the two screenshots
          (let [result# (~f)]
-           ;; Take after screenshot
            (take-screenshot ~page (str slug# "-after"))
-           result#)))))
+           
+           ;; Finish After first (it's the deepest in the stack)
+           (.stepFinished event-bus#)
+           
+           ;; Then finish Before
+           (.stepFinished event-bus#)
+           
+           ;; Finally finish parent
+           (.stepFinished event-bus#)
+           (println (str "✓ Step completed (" (- (System/currentTimeMillis) start-time#) "ms)"))
+           result#))
+       (catch Exception e#
+         (let [failure# (StepFailure. step-desc# e#)]
+           (.stepFailed event-bus# failure#))
+         (println (str "✗ Step failed: " (.getMessage e#)))
+         (throw e#)))))
 
 (defn start-browser []
   "Start Playwright browser and return page instance"

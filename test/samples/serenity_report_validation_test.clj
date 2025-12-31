@@ -144,59 +144,47 @@
   "Test that captures multiple screenshots at different stages
    to validate screenshot gallery generation in reports.
    Verifies:
-   - Multiple screenshots are captured in sequence
+   - Multiple screenshots are captured before and after each action
    - Each screenshot is uniquely named and timestamped
    - Screenshots appear in report gallery views
    - Screenshot thumbnails are generated"
   (with-serenity [page]
     
-    (step "Navigate to example.com - Initial load"
+    (ui-step page "Navigate to example.com - Initial load"
       #(do
          (.navigate page "https://example.com")
-         (.waitForLoadState page LoadState/NETWORKIDLE)
-         (take-screenshot page "01-example-initial-load")))
+         (.waitForLoadState page LoadState/NETWORKIDLE)))
     
-    (step "Capture page content after h1 verification"
-      #(do
-         (let [heading (.locator page "h1")]
-           (is (> (.count heading) 0) "Page should have h1 heading")
-           (is (str/includes? (.textContent (.first heading)) "Example")
-               "Heading should contain 'Example'"))
-         (take-screenshot page "02-example-heading-verified")))
+    (ui-step page "Verify page content and h1 heading"
+      #(let [heading (.locator page "h1")]
+         (is (> (.count heading) 0) "Page should have h1 heading")
+         (is (str/includes? (.textContent (.first heading)) "Example")
+             "Heading should contain 'Example'")))
     
-    (step "Capture page body content"
-      #(do
-         (let [paragraph (.locator page "p")]
-           (is (> (.count paragraph) 0) "Page should have paragraphs"))
-         (take-screenshot page "03-example-body-content")))
+    (ui-step page "Verify page body content"
+      #(let [paragraph (.locator page "p")]
+         (is (> (.count paragraph) 0) "Page should have paragraphs")))
     
-    (step "Scroll to bottom and capture"
+    (ui-step page "Scroll to bottom of page"
       #(do
          (.evaluate page "window.scrollTo(0, document.body.scrollHeight)")
-         (Thread/sleep 500)
-         (take-screenshot page "04-example-scrolled-bottom")))
+         (Thread/sleep 500)))
     
-    (step "Navigate to httpbin and capture"
+    (ui-step page "Navigate to httpbin homepage"
       #(do
          (.navigate page "https://httpbin.org")
-         (.waitForLoadState page LoadState/NETWORKIDLE)
-         (take-screenshot page "05-httpbin-homepage")))
+         (.waitForLoadState page LoadState/NETWORKIDLE)))
     
-    (step "Capture httpbin API documentation section"
-      #(do
-         (Thread/sleep 1000)
-         (take-screenshot page "06-httpbin-api-docs")))
+    (ui-step page "View httpbin API documentation"
+      #(Thread/sleep 1000))
     
-    (step "Navigate back to example.com"
+    (ui-step page "Navigate back to example.com"
       #(do
          (.navigate page "https://example.com")
-         (.waitForLoadState page LoadState/NETWORKIDLE)
-         (take-screenshot page "07-example-revisited")))
+         (.waitForLoadState page LoadState/NETWORKIDLE)))
     
-    (step "Final screenshot of test journey"
-      #(do
-         (take-screenshot page "08-test-journey-completed")
-         (println "✓ Captured 8 screenshots in sequence")))))
+    (ui-step page "Complete test journey"
+      #(println "✓ Captured screenshots at each step with before/after states"))))
 
 (deftest api-only-test
   "Test with only API calls to validate API request/response logging"

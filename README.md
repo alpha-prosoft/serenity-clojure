@@ -10,7 +10,7 @@ A powerful, elegant testing library for Clojure that combines **Serenity BDD** r
 ## Features
 
 - **Pure Clojure API**: Write tests using standard `clojure.test` - no Java interop required
-- **Automatic Screenshot Capture**: Screenshots are embedded directly in HTML reports with gallery views
+- **Automatic Before/After Screenshots**: UI steps capture screenshots before and after each action
 - **Step-Based Reporting**: Every test step is tracked with timing, status, and full context
 - **Browser Automation**: Full Playwright integration for modern web testing
 - **API Testing**: REST Assured integration with automatic request/response logging
@@ -43,17 +43,15 @@ npx playwright install chromium
 ```clojure
 (ns my-app.tests
   (:require [clojure.test :refer [deftest is]]
-            [testing.junit :refer [with-serenity step take-screenshot]]))
+            [testing.junit :refer [with-serenity ui-step]]))
 
 (deftest simple-navigation-test
   (with-serenity [page]
     
-    (step "Navigate to example.com"
-      #(do
-         (.navigate page "https://example.com")
-         (take-screenshot page "homepage")))
+    (ui-step page "Navigate to example.com"
+      #(.navigate page "https://example.com"))
     
-    (step "Verify page title"
+    (ui-step page "Verify page title"
       #(is (clojure.string/includes? (.title page) "Example")))))
 ```
 
@@ -98,6 +96,36 @@ Execute a test step with automatic reporting:
 (step "Navigate to homepage"
   #(.navigate page "https://example.com"))
 ```
+
+#### `ui-step [page description f]`
+
+Execute a UI step with **automatic before/after screenshots**:
+- Creates nested "Before" and "After" child steps
+- Automatically captures screenshot before the action
+- Executes the UI action
+- Automatically captures screenshot after the action
+- Both screenshots appear in reports under the parent step
+
+```clojure
+(ui-step page "Login to application"
+  #(do
+     (.fill page "#username" "testuser")
+     (.fill page "#password" "password")
+     (.click page "#login-button")))
+```
+
+This creates a step hierarchy:
+```
+Login to application
+├── Login to application - Before (screenshot)
+└── Login to application - After (screenshot)
+```
+
+**Perfect for:**
+- Documenting UI state changes
+- Visual regression testing
+- Before/after comparisons
+- Step-by-step UI journeys
 
 #### `api-step [description f]`
 
@@ -217,6 +245,57 @@ python3 -m http.server 8000 --directory target/site/serenity
 
 ## Advanced Examples
 
+### UI Testing with Automatic Before/After Screenshots
+
+The `ui-step` macro automatically captures screenshots before and after each UI action, creating a visual timeline of your test:
+
+```clojure
+(ns my-app.ui-test
+  (:require [clojure.test :refer [deftest is]]
+            [testing.junit :refer [with-serenity ui-step api-step]])
+  (:import [com.microsoft.playwright.options LoadState]))
+
+(deftest user-login-journey
+  (with-serenity [page]
+    
+    ;; Each ui-step creates Before and After screenshots automatically
+    (ui-step page "Navigate to login page"
+      #(do
+         (.navigate page "https://myapp.com/login")
+         (.waitForLoadState page LoadState/NETWORKIDLE)))
+    
+    (ui-step page "Fill in login credentials"
+      #(do
+         (.fill page "#username" "testuser")
+         (.fill page "#password" "password123")))
+    
+    (ui-step page "Submit login form"
+      #(.click page "button[type='submit']"))
+    
+    (ui-step page "Verify successful login"
+      #(do
+         (.waitForSelector page ".dashboard")
+         (is (.isVisible (.locator page ".user-profile")))))))
+```
+
+**Report Output:**
+```
+✓ Navigate to login page
+  ├── Navigate to login page - Before (screenshot)
+  └── Navigate to login page - After (screenshot)
+✓ Fill in login credentials
+  ├── Fill in login credentials - Before (screenshot)
+  └── Fill in login credentials - After (screenshot)
+✓ Submit login form
+  ├── Submit login form - Before (screenshot)
+  └── Submit login form - After (screenshot)
+✓ Verify successful login
+  ├── Verify successful login - Before (screenshot)
+  └── Verify successful login - After (screenshot)
+```
+
+This creates **8 screenshots** (4 steps × 2 screenshots each) documenting every state change in your UI test.
+
 ### Complete Test Workflow - From Writing to Validation
 
 Here's a complete workflow that demonstrates how to write comprehensive tests, generate reports, and validate that all artifacts are properly created:
@@ -237,30 +316,27 @@ open target/site/serenity/index.html
 
 ### Combined UI and API Testing
 
-Test that combines browser automation with API calls in a single scenario:
+Test that combines browser automation with API calls in a single scenario, using automatic before/after screenshots for UI steps:
 
 ```clojure
 (ns my-app.integration-test
   (:require [clojure.test :refer [deftest is]]
-            [testing.junit :refer [with-serenity step api-step take-screenshot]])
+            [testing.junit :refer [with-serenity ui-step api-step]])
   (:import [net.serenitybdd.rest SerenityRest]
            [io.restassured.http ContentType]
-           [com.microsoft.playwright Page$WaitForLoadStateOptions LoadState]))
+           [com.microsoft.playwright.options LoadState]))
 
 (deftest combined-ui-api-test
   (with-serenity [page]
     
-    ;; UI Testing - Navigate and capture screenshots
-    (step "Navigate to application homepage"
+    ;; UI Testing with automatic before/after screenshots
+    (ui-step page "Navigate to application homepage"
       #(do
          (.navigate page "https://example.com")
-         (.waitForLoadState page LoadState/NETWORKIDLE)
-         (take-screenshot page "01-homepage")))
+         (.waitForLoadState page LoadState/NETWORKIDLE)))
     
-    (step "Verify page loaded correctly"
-      #(do
-         (is (clojure.string/includes? (.title page) "Example"))
-         (take-screenshot page "02-verified")))
+    (ui-step page "Verify page loaded correctly"
+      #(is (clojure.string/includes? (.title page) "Example")))
     
     ;; API Testing - Call REST endpoints with full logging
     (api-step "Fetch data from API with query parameters"
@@ -273,7 +349,7 @@ Test that combines browser automation with API calls in a single scenario:
                           (.statusCode 200)
                           (.extract)
                           (.response))]
-         (is (some? (-> response .jsonPath (.getString "id")))))
+         (is (some? (-> response .jsonPath (.getString "id"))))))
     
     ;; More API testing with POST request
     (api-step "Create new resource via API"
@@ -286,56 +362,55 @@ Test that combines browser automation with API calls in a single scenario:
            (.then)
            (.statusCode 201)))
     
-    ;; Continue UI interaction based on API data
-    (step "Navigate to details page"
-      #(do
-         (.navigate page "https://example.com/details")
-         (take-screenshot page "03-details-page")))))
+    ;; Continue UI interaction with automatic screenshots
+    (ui-step page "Navigate to details page"
+      #(.navigate page "https://example.com/details"))))
 ```
 
 This test will generate a Serenity report that includes:
-- All UI navigation steps with screenshots
+- **4 UI screenshots** (2 UI steps × 2 screenshots each = before/after for each step)
 - Full API request/response details (URL, headers, body, status)
 - Step-by-step execution timeline
 - Combined test duration and statistics
 
 ### Testing with Multiple Screenshots - Gallery Validation
 
-Create comprehensive screenshot galleries to document visual test journeys:
+Create comprehensive screenshot galleries using `ui-step` for automatic before/after documentation, or use manual screenshots with the `step` macro for custom scenarios:
 
 ```clojure
+(ns my-app.visual-test
+  (:require [clojure.test :refer [deftest]]
+            [testing.junit :refer [with-serenity ui-step]]))
+
 (deftest visual-journey-test
   (with-serenity [page]
     
-    (step "Initial page load"
-      #(do
-         (.navigate page "https://example.com")
-         (take-screenshot page "01-initial-load")))
+    ;; Each ui-step automatically creates before/after screenshots
+    (ui-step page "Navigate to homepage"
+      #(.navigate page "https://example.com"))
     
-    (step "User interaction - Login form"
+    (ui-step page "Fill in login form"
       #(do
          (.fill page "#username" "testuser")
-         (.fill page "#password" "password")
-         (take-screenshot page "02-login-filled")
-         (.click page "#login-button")
-         (take-screenshot page "03-after-login")))
+         (.fill page "#password" "password")))
     
-    (step "Navigate through application sections"
-      #(do
-         (.click page "a:has-text(\"Dashboard\")")
-         (take-screenshot page "04-dashboard")
-         (.click page "a:has-text(\"Profile\")")
-         (take-screenshot page "05-profile")
-         (.click page "a:has-text(\"Settings\")")
-         (take-screenshot page "06-settings")))
+    (ui-step page "Submit and login"
+      #(.click page "#login-button"))
     
-    (step "Final state verification"
-      #(do
-         (.click page "#logout")
-         (take-screenshot page "07-logged-out")))))
+    (ui-step page "Open user dashboard"
+      #(.click page "a:has-text(\"Dashboard\")"))
+    
+    (ui-step page "Navigate to profile section"
+      #(.click page "a:has-text(\"Profile\")"))
+    
+    (ui-step page "View settings page"
+      #(.click page "a:has-text(\"Settings\")"))
+    
+    (ui-step page "Logout from application"
+      #(.click page "#logout"))))
 ```
 
-**Result**: Serenity generates a screenshot gallery showing the complete user journey with 7+ images, all clickable in the HTML report.
+**Result**: This test creates **14 screenshots** (7 UI steps × 2 screenshots each) showing the complete user journey with before/after states for every interaction. Serenity generates a screenshot gallery with all images clickable and organized by test step in the HTML report.
 
 ### API-Only Testing with Full Request/Response Logging
 
@@ -606,22 +681,31 @@ open target/site/serenity/index.html
 
 **Serenity reports automatically include:**
 
-1. **Test Steps**: Every `step` and `api-step` call with timing and status
-2. **Screenshots**: All images captured via `take-screenshot` with thumbnails and galleries
-3. **API Calls**: Full HTTP request/response details including:
+1. **Test Steps**: Every `step`, `ui-step`, and `api-step` call with timing and status
+2. **Nested Screenshots**: For `ui-step`, automatic before/after screenshots as nested child steps
+3. **Manual Screenshots**: Images captured via `take-screenshot` with thumbnails and galleries
+4. **API Calls**: Full HTTP request/response details including:
    - Request URL, method, headers, body
    - Response status, headers, body
    - Timing information
-4. **Failures**: Stack traces and error messages
-5. **Test Metadata**: Duration, timestamps, test structure
-6. **Aggregates**: Summary statistics across all tests
+5. **Failures**: Stack traces and error messages
+6. **Test Metadata**: Duration, timestamps, test structure
+7. **Aggregates**: Summary statistics across all tests
+
+**Step Hierarchy Example:**
+```
+✓ Login to application (parent step)
+  ├── Login to application - Before (child step with screenshot)
+  └── Login to application - After (child step with screenshot)
+✓ API: Get user data (api step with full request/response)
+```
 
 **Report Structure:**
 ```
 target/site/serenity/
 ├── index.html              # Main dashboard
 ├── *.json                  # Test result data
-├── *.png                   # Screenshots
+├── *.png                   # Screenshots (before/after pairs)
 ├── serenity.css           # Styling
 └── serenity.js            # Interactive features
 ```

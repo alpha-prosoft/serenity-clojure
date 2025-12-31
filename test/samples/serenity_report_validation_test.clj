@@ -12,7 +12,7 @@
             [clojure.string :as str]
             [testing.junit :refer [with-serenity step api-step take-screenshot generate-reports]])
   (:import [net.serenitybdd.rest SerenityRest]
-           [io.restassured.http ContentType]
+           [io.restassured.http ContentType Header]
            [com.microsoft.playwright Page$WaitForLoadStateOptions]
            [com.microsoft.playwright.options LoadState]))
 
@@ -45,8 +45,8 @@
     (api-step "Execute GET request to httpbin with query parameters"
       #(let [response (-> (SerenityRest/given)
                           (.baseUri "https://httpbin.org")
-                          (.queryParam "test_param" "clojure")
-                          (.queryParam "timestamp" (System/currentTimeMillis))
+                          (.queryParam "test_param" (into-array Object ["clojure"]))
+                          (.queryParam "timestamp" (into-array Object [(System/currentTimeMillis)]))
                           (.when)
                           (.get "/get" (into-array Object []))
                           (.then)
@@ -100,8 +100,8 @@
       #(let [response (-> (SerenityRest/given)
                           (.baseUri "https://httpbin.org")
                           (.contentType ContentType/JSON)
-                          (.header "X-Custom-Header" "test-value")
-                          (.header "X-Test-ID" "123456")
+                          (.header (Header. "X-Custom-Header" "test-value"))
+                          (.header (Header. "X-Test-ID" "123456"))
                           (.body {"updated" true "timestamp" (System/currentTimeMillis)})
                           (.when)
                           (.put "/put" (into-array Object []))

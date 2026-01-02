@@ -17,6 +17,14 @@
 ;; Screenshot counter for unique filenames
 (def screenshot-counter (atom 0))
 
+(defn format-stack-trace
+  "Format exception stack trace as a string"
+  [^Throwable e]
+  (let [sw (java.io.StringWriter.)
+        pw (java.io.PrintWriter. sw)]
+    (.printStackTrace e pw)
+    (.toString sw)))
+
 (defn ensure-dir [path]
   "Ensure directory exists, create if not"
   (let [dir (io/file path)]
@@ -180,46 +188,100 @@
      (try
        (let [listener# (init-serenity)]
          (.testStarted event-bus# test-name# story#)
-         (println (str "\n" (apply str (repeat 60 "=")) "\n"
-                      "Test: " test-name# "\n"
-                      (apply str (repeat 60 "=")) "\n"))
-         (try
-           (let [result# (do ~@body)]
-             (.testFinished event-bus#)
-             
-              ;; Write JSON report
-              (try
-                (let [outcome# (.getCurrentTestOutcome listener#)]
-                  (when outcome#
-                    (let [output-dir# (File. (or (System/getProperty "serenity.outputDirectory")
-                                                 "target/site/serenity"))
-                          reporter# (JSONTestOutcomeReporter.)]
-                      (ensure-dir (.getPath output-dir#))
-                      (.setOutputDirectory reporter# output-dir#)
-                      (.generateReportFor reporter# outcome#))))
-                (catch Exception e#
-                  (println "Warning: Could not write JSON report:" (.getMessage e#))))
-             
-             (println (str "\n✓ Test passed: " test-name# "\n"))
-             result#)
+          (println (str "\n" (apply str (repeat 60 "=")) "\n"
+                       "Test: " test-name# "\n"
+                       (apply str (repeat 60 "=")) "\n"))
+          (try
+            ;; Track assertion failures
+            (let [failures# (atom [])
+                  original-report# t/report]
+              ;; Intercept clojure.test reports to capture failures
+              (with-redefs [t/report (fn [m#]
+                                      (when (#{:fail :error} (:type m#))
+                                        (swap! failures# conj m#))
+                                      (original-report# m#))]
+                (let [result# (do ~@body)
+                      has-failures# (seq @failures#)]
+                  
+                  ;; Report to Serenity based on test outcome
+                  (if has-failures#
+                    (let [failure-msg# (apply str
+                                             (concat
+                                              [(str "Test had " (count @failures#) " assertion failure(s)\n\n")]
+                                              (mapcat (fn [failure#]
+                                                       [(str "• " (or (:message failure#) "Assertion failed") "\n")
+                                                        (when (:expected failure#)
+                                                          (str "  Expected: " (pr-str (:expected failure#)) "\n"))
+                                                        (when (:actual failure#)
+                                                          (str "  Actual:   " (pr-str (:actual failure#)) "\n"))
+                                                        (when (and (:file failure#) (:line failure#))
+                                                          (str "  Location: " (:file failure#) ":" (:line failure#) "\n"))
+                                                        ;; Add stack trace if the actual value is a throwable
+                                                        (when-let [actual-val# (:actual failure#)]
+                                                          (when (instance? Throwable actual-val#)
+                                                            (str "\n=== Stack Trace ===\n" (format-stack-trace actual-val#) "\n")))
+                                                        "\n"])
+                                                     @failures#)))
+                          failure-ex# (Exception. failure-msg#)]
+                      (.testFailed event-bus# failure-ex#))
+                    (.testFinished event-bus#))
+                  
+                  ;; Write JSON report
+                  (try
+                    (let [outcome# (.getCurrentTestOutcome listener#)]
+                      (when outcome#
+                        (let [output-dir# (File. (or (System/getProperty "serenity.outputDirectory")
+                                                     "target/site/serenity"))
+                              reporter# (JSONTestOutcomeReporter.)]
+                          (ensure-dir (.getPath output-dir#))
+                          (.setOutputDirectory reporter# output-dir#)
+                          (.generateReportFor reporter# outcome#))))
+                    (catch Exception e#
+                      (println "Warning: Could not write JSON report:" (.getMessage e#))))
+                  
+                  ;; Print result summary
+                  (if has-failures#
+                    (do
+                      (println (str "\n✗ Test failed: " test-name# "\n"))
+                      (println "Assertion Failures:")
+                      (doseq [failure# @failures#]
+                        (println (str "  • " (or (:message failure#) "Assertion failed")))
+                        (when (:expected failure#)
+                          (println (str "    Expected: " (pr-str (:expected failure#)))))
+                        (when (:actual failure#)
+                          (println (str "    Actual:   " (pr-str (:actual failure#)))))
+                        (when (and (:file failure#) (:line failure#))
+                          (println (str "    Location: " (:file failure#) ":" (:line failure#))))
+                        (println)))
+                    (println (str "\n✓ Test passed: " test-name# "\n")))
+                  
+                  result#)))
            (catch Exception e#
-             (.testFailed event-bus# e#)
-             
-              ;; Write JSON report even on failure
-              (try
-                (let [outcome# (.getCurrentTestOutcome listener#)]
-                  (when outcome#
-                    (let [output-dir# (File. (or (System/getProperty "serenity.outputDirectory")
-                                                 "target/site/serenity"))
-                          reporter# (JSONTestOutcomeReporter.)]
-                      (ensure-dir (.getPath output-dir#))
-                      (.setOutputDirectory reporter# output-dir#)
-                      (.generateReportFor reporter# outcome#))))
-                (catch Exception e2#
-                  (println "Warning: Could not write JSON report:" (.getMessage e2#))))
-             
-             (println (str "\n✗ Test failed: " test-name# "\n"))
-             (throw e#))))
+             ;; Create enhanced exception with full stack trace for reporting
+             (let [stack-trace# (format-stack-trace e#)
+                   enhanced-msg# (str (.getMessage e#) "\n\n=== Full Stack Trace ===\n" stack-trace#)
+                   enhanced-ex# (Exception. enhanced-msg# e#)]
+               (.testFailed event-bus# enhanced-ex#)
+               
+               ;; Write JSON report even on failure
+               (try
+                 (let [outcome# (.getCurrentTestOutcome listener#)]
+                   (when outcome#
+                     (let [output-dir# (File. (or (System/getProperty "serenity.outputDirectory")
+                                                  "target/site/serenity"))
+                           reporter# (JSONTestOutcomeReporter.)]
+                       (ensure-dir (.getPath output-dir#))
+                       (.setOutputDirectory reporter# output-dir#)
+                       (.generateReportFor reporter# outcome#))))
+                 (catch Exception e2#
+                   (println "Warning: Could not write JSON report:" (.getMessage e2#))))
+               
+               (println (str "\n✗ Test failed: " test-name# "\n"))
+               (println "Error message:")
+               (println (.getMessage e#))
+               (println "\nFull stack trace:")
+               (println stack-trace#)
+               (throw e#)))))
        (finally
          (stop-browser browser-map#)
          (.dropAllListeners event-bus#)))))

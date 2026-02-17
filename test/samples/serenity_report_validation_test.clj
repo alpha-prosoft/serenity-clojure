@@ -40,22 +40,19 @@
              "Page title should contain 'httpbin'")))
     
     ;; API Step 1: GET request - verify request/response logging
-    (api-step "Execute GET request to httpbin with query parameters"
-      #(let [response (-> (SerenityRest/given)
-                          (.baseUri "https://httpbin.org")
-                          (.queryParam "test_param" (into-array Object ["clojure"]))
-                          (.queryParam "timestamp" (into-array Object [(System/currentTimeMillis)]))
-                          (.when)
-                          (.get "/get" (into-array Object []))
-                          (.then)
-                          (.statusCode 200)
-                          (.extract)
-                          (.response))]
-         (is (some? (-> response .jsonPath (.getString "url")))
-             "GET response should contain URL field")
-         (is (= "clojure" (-> response .jsonPath (.getString "args.test_param")))
-             "Query parameters should be echoed back")
-         (println "✓ GET request successful with query parameters")))
+     (api-step "Execute GET request to httpbin with query parameters"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://httpbin.org")
+                           (.queryParam "test_param" (into-array Object ["clojure"]))
+                           (.queryParam "timestamp" (into-array Object [(System/currentTimeMillis)]))
+                           (.when)
+                           (.get "/get" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))
+           (is (some? (-> response .jsonPath (.getString "url")))
+               "GET response should contain URL field")
+           (is (= "clojure" (-> response .jsonPath (.getString "args.test_param")))
+               "Query parameters should be echoed back")
+           (println "✓ GET request successful with query parameters")))
     
     ;; UI Step 3: Navigate to a different page
     (ui-step page "Navigate to httpbin GET endpoint documentation"
@@ -64,26 +61,23 @@
          (Thread/sleep 2000)))
     
     ;; API Step 2: POST request with JSON data
-    (api-step "Execute POST request with JSON body"
-      #(let [test-data {"test" "data" 
-                        "timestamp" (System/currentTimeMillis)
-                        "source" "serenity-clojure"
-                        "nested" {"key" "value" "count" 42}}
-             response (-> (SerenityRest/given)
-                          (.baseUri "https://httpbin.org")
-                          (.contentType ContentType/JSON)
-                          (.body test-data)
-                          (.when)
-                          (.post "/post" (into-array Object []))
-                          (.then)
-                          (.statusCode 200)
-                          (.extract)
-                          (.response))]
-         (is (= "data" (-> response .jsonPath (.getString "json.test")))
-             "POST response should echo the sent data")
-         (is (= 42 (-> response .jsonPath (.getInt "json.nested.count")))
-             "Nested JSON data should be preserved")
-         (println "✓ POST request successful with nested JSON")))
+     (api-step "Execute POST request with JSON body"
+       #(let [test-data {"test" "data" 
+                         "timestamp" (System/currentTimeMillis)
+                         "source" "serenity-clojure"
+                         "nested" {"key" "value" "count" 42}}
+              response (-> (SerenityRest/given)
+                           (.baseUri "https://httpbin.org")
+                           (.contentType ContentType/JSON)
+                           (.body test-data)
+                           (.when)
+                           (.post "/post" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))
+           (is (= "data" (-> response .jsonPath (.getString "json.test")))
+               "POST response should echo the sent data")
+           (is (= 42 (-> response .jsonPath (.getInt "json.nested.count")))
+               "Nested JSON data should be preserved")
+           (println "✓ POST request successful with nested JSON")))
     
     ;; UI Step 4: Navigate to POST endpoint page
     (ui-step page "Navigate to POST endpoint documentation"
@@ -92,53 +86,44 @@
          (Thread/sleep 1500)))
     
     ;; API Step 3: PUT request with headers
-    (api-step "Execute PUT request with custom headers"
-      #(let [response (-> (SerenityRest/given)
-                          (.baseUri "https://httpbin.org")
-                          (.contentType ContentType/JSON)
-                          (.header (Header. "X-Custom-Header" "test-value"))
-                          (.header (Header. "X-Test-ID" "123456"))
-                          (.body {"updated" true "timestamp" (System/currentTimeMillis)})
-                          (.when)
-                          (.put "/put" (into-array Object []))
-                          (.then)
-                          (.statusCode 200)
-                          (.extract)
-                          (.response))]
-         (is (= "test-value" (-> response .jsonPath (.getString "headers.X-Custom-Header")))
-             "Custom headers should be sent with request")
-         (println "✓ PUT request successful with custom headers")))
+     (api-step "Execute PUT request with custom headers"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://httpbin.org")
+                           (.contentType ContentType/JSON)
+                           (.header (Header. "X-Custom-Header" "test-value"))
+                           (.header (Header. "X-Test-ID" "123456"))
+                           (.body {"updated" true "timestamp" (System/currentTimeMillis)})
+                           (.when)
+                           (.put "/put" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))
+           (is (= "test-value" (-> response .jsonPath (.getString "headers.X-Custom-Header")))
+               "Custom headers should be sent with request")
+           (println "✓ PUT request successful with custom headers")))
     
     ;; UI Step 5: Take final screenshot
     (ui-step page "Capture final state"
       #(println "✓ Combined UI+API test completed successfully"))
     
     ;; API Step 4: DELETE request
-    (api-step "Execute DELETE request"
-      #(let [response (-> (SerenityRest/given)
-                          (.baseUri "https://httpbin.org")
-                          (.when)
-                          (.delete "/delete" (into-array Object []))
-                          (.then)
-                          (.statusCode 200)
-                          (.extract)
-                          (.response))]
-         (is (some? (-> response .jsonPath (.getString "url")))
-             "DELETE response should contain URL")
-         (println "✓ DELETE request successful")))
+     (api-step "Execute DELETE request"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://httpbin.org")
+                           (.when)
+                           (.delete "/delete" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))
+           (is (some? (-> response .jsonPath (.getString "url")))
+               "DELETE response should contain URL")
+           (println "✓ DELETE request successful")))
     
     ;; API Step 5: PATCH request
-    (api-step "Execute PATCH request"
-      #(-> (SerenityRest/given)
-           (.baseUri "https://httpbin.org")
-           (.contentType ContentType/JSON)
-           (.body {"partial" "update"})
-           (.when)
-           (.patch "/patch" (into-array Object []))
-           (.then)
-           (.statusCode 200)
-           (.extract)
-           (.response)))))
+     (api-step "Execute PATCH request"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://httpbin.org")
+                           (.contentType ContentType/JSON)
+                           (.body {"partial" "update"})
+                           (.when)
+                           (.patch "/patch" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))))))
 
 (deftest multiple-screenshots-test
   "Test that captures multiple screenshots at different stages
@@ -190,68 +175,62 @@
   "Test with only API calls to validate API request/response logging"
   (with-serenity [page]
     
-    (api-step "GET /users endpoint"
-      #(-> (SerenityRest/given)
-           (.baseUri "https://jsonplaceholder.typicode.com")
-           (.when)
-           (.get "/users" (into-array Object []))
-           (.then)
-           (.statusCode 200)
-           (.extract)
-           (.response)))
+     (api-step "GET /users endpoint"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://jsonplaceholder.typicode.com")
+                           (.when)
+                           (.get "/users" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))))
     
-    (api-step "GET specific user"
-      #(let [response (-> (SerenityRest/given)
-                          (.baseUri "https://jsonplaceholder.typicode.com")
-                          (.when)
-                          (.get "/users/1" (into-array Object []))
-                          (.then)
-                          (.statusCode 200)
-                          (.extract)
-                          (.response))]
-         (is (= "Leanne Graham" (-> response .jsonPath (.getString "name"))))))
+     (api-step "GET specific user"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://jsonplaceholder.typicode.com")
+                           (.when)
+                           (.get "/users/1" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))
+           (is (= "Leanne Graham" (-> response .jsonPath (.getString "name"))))))
     
-    (api-step "Create new user"
-      #(-> (SerenityRest/given)
-           (.baseUri "https://jsonplaceholder.typicode.com")
-           (.contentType ContentType/JSON)
-           (.body {"name" "Test User" "username" "testuser" "email" "test@example.com"})
-           (.when)
-           (.post "/users" (into-array Object []))
-           (.then)
-           (.statusCode 201)
-           (.extract)
-           (.response)))
+     (api-step "Create new user"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://jsonplaceholder.typicode.com")
+                           (.contentType ContentType/JSON)
+                           (.body {"name" "Test User" "username" "testuser" "email" "test@example.com"})
+                           (.when)
+                           (.post "/users" (into-array Object [])))]
+           (is (= 201 (.statusCode response)))))
     
-    (api-step "Update user"
-      #(-> (SerenityRest/given)
-           (.baseUri "https://jsonplaceholder.typicode.com")
-           (.contentType ContentType/JSON)
-           (.body {"name" "Updated User"})
-           (.when)
-           (.put "/users/1" (into-array Object []))
-           (.then)
-           (.statusCode 200)
-           (.extract)
-           (.response)))
+     (api-step "Update user"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://jsonplaceholder.typicode.com")
+                           (.contentType ContentType/JSON)
+                           (.body {"name" "Updated User"})
+                           (.when)
+                           (.put "/users/1" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))))
     
-    (api-step "Delete user"
-      #(-> (SerenityRest/given)
-           (.baseUri "https://jsonplaceholder.typicode.com")
-           (.when)
-           (.delete "/users/1" (into-array Object []))
-           (.then)
-           (.statusCode 200)
-           (.extract)
-           (.response)))))
+     (api-step "Delete user"
+       #(let [response (-> (SerenityRest/given)
+                           (.baseUri "https://jsonplaceholder.typicode.com")
+                           (.when)
+                           (.delete "/users/1" (into-array Object [])))]
+           (is (= 200 (.statusCode response)))))))
+
+(defn- collect-from-steps
+  "Recursively collect items from test steps and their children.
+   Returns a sequence of steps (at any nesting level) that match the predicate."
+  [steps pred]
+  (when (seq steps)
+    (concat
+     (filter pred steps)
+     (mapcat #(collect-from-steps (:children %) pred) steps))))
 
 (defn validate-json-reports
   "Validate that JSON reports are properly generated with expected structure.
    Checks for:
    - Correct JSON structure with required fields
    - Test steps with descriptions and timing
-   - Screenshot references in steps
-   - REST API call data (restQuery field)
+   - Screenshot references in steps (including nested children)
+   - REST API call data (restQuery field, including nested children)
    - Test metadata and duration
    - Report aggregation data"
   []
@@ -289,18 +268,22 @@
               (when (:result content)
                 (println (str "  ✓ Result: " (:result content))))
               
-              ;; Check for screenshots with detailed info
-              (let [screenshots (filter #(contains? % :screenshot) (:testSteps content))
-                    screenshot-count (count screenshots)]
+              ;; Check for screenshots recursively (they live in children)
+              (let [screenshot-steps (collect-from-steps 
+                                      (:testSteps content)
+                                      #(seq (:screenshots %)))
+                    screenshot-count (count screenshot-steps)]
                 (when (> screenshot-count 0)
                   (swap! total-screenshots + screenshot-count)
                   (println (str "  ✓ Screenshots found: " screenshot-count))
-                  (doseq [screenshot (take 3 screenshots)]
-                    (when (:description screenshot)
-                      (println (str "    - " (:description screenshot)))))))
+                  (doseq [s (take 3 screenshot-steps)]
+                    (when (:description s)
+                      (println (str "    - " (:description s)))))))
               
-              ;; Check for REST data with detailed info
-              (let [rest-steps (filter #(contains? % :restQuery) (:testSteps content))
+              ;; Check for REST data recursively (they live in children)
+              (let [rest-steps (collect-from-steps
+                                 (:testSteps content)
+                                 #(contains? % :restQuery))
                     api-count (count rest-steps)]
                 (when (> api-count 0)
                   (swap! total-api-calls + api-count)
@@ -311,7 +294,7 @@
               
               ;; Validate test result status
               (when-let [result (:result content)]
-                (is (contains? #{"SUCCESS" "FAILURE" "PENDING" "SKIPPED"} result)
+                (is (contains? #{"SUCCESS" "FAILURE" "PENDING" "SKIPPED" "ERROR"} result)
                     "Test result should be valid status")))
             (catch Exception e
               (println (str "  ✗ Error parsing JSON: " (.getMessage e)))))))
@@ -330,42 +313,53 @@
       (is (> @total-screenshots 0) "Reports should contain screenshots")
       (is (> @total-api-calls 0) "Reports should contain API calls"))))
 
+(defn- test-screenshot?
+  "Returns true if the PNG file is a test screenshot (not a Serenity report asset).
+   Test screenshots are in the root output directory and have timestamp patterns in their names."
+  [^java.io.File png-file ^java.io.File output-dir]
+  (and (.isFile png-file)
+       (.endsWith (.getName png-file) ".png")
+       ;; Must be directly in the output directory (not in images/, jit/, jquery-ui/ subdirs)
+       (= (.getCanonicalPath (.getParentFile png-file)) (.getCanonicalPath output-dir))
+       ;; Test screenshots have a numeric timestamp-index suffix pattern like -1771311775318-4.png
+       (re-find #"-\d{10,}-\d+\.png$" (.getName png-file))))
+
 (defn validate-screenshots
   "Validate that screenshot files exist and are properly named.
    Checks for:
-   - PNG files in output directory
+   - PNG files in output directory (excluding report assets)
    - Reasonable file sizes
-   - Proper naming convention
+   - Proper naming convention with timestamps
    - Screenshot count matches expectations"
   []
-  (let [output-dir (or (System/getProperty "serenity.outputDirectory") 
-                       "target/site/serenity")
-        png-files (filter #(.endsWith (.getName %) ".png")
-                         (file-seq (io/file output-dir)))]
+  (let [output-dir-path (or (System/getProperty "serenity.outputDirectory") 
+                            "target/site/serenity")
+        output-dir (io/file output-dir-path)
+        png-files (filter #(test-screenshot? % output-dir)
+                          (file-seq output-dir))]
     (println "\n========================================")
     (println "Validating Screenshots")
     (println "========================================")
-    (println (str "Output directory: " output-dir))
-    (println (str "Screenshot files found: " (count png-files)))
+    (println (str "Output directory: " output-dir-path))
+    (println (str "Test screenshot files found: " (count png-files)))
     
     (let [total-size (atom 0)]
       (doseq [png-file png-files]
-        (when (.isFile png-file)
-          (let [size-kb (Math/round (/ (.length png-file) 1024.0))]
-            (swap! total-size + size-kb)
-            (println (str "  📸 " (.getName png-file) 
-                         " (" size-kb " KB)"))
-            ;; Validate screenshot has reasonable size (>1KB indicates real content)
-            (is (> size-kb 1) "Screenshot should have substantial content"))))
+        (let [size-kb (Math/round (double (/ (.length ^java.io.File png-file) 1024.0)))]
+          (swap! total-size + size-kb)
+          (println (str "  📸 " (.getName ^java.io.File png-file) 
+                       " (" size-kb " KB)"))
+          ;; Validate screenshot has reasonable size (>1KB indicates real content)
+          (is (> size-kb 1) (str "Screenshot should have substantial content: " (.getName ^java.io.File png-file)))))
       
       (println (str "\nTotal screenshots size: " @total-size " KB"))
       (println (str "Average screenshot size: " 
                    (if (> (count png-files) 0)
-                     (Math/round (/ @total-size (count png-files)))
+                     (Math/round (double (/ @total-size (count png-files))))
                      0) " KB"))
       (println "========================================\n")
       
-      (is (> (count png-files) 0) "At least one screenshot should exist")
+      (is (> (count png-files) 0) "At least one test screenshot should exist")
       (is (> @total-size 10) "Screenshots should have meaningful content"))))
 
 (deftest validate-report-generation
@@ -392,7 +386,7 @@
       (if (.exists index-file)
         (do
           (println (str "  ✓ index.html exists"))
-          (println (str "  ✓ Size: " (Math/round (/ (.length index-file) 1024.0)) " KB"))
+          (println (str "  ✓ Size: " (Math/round (double (/ (.length index-file) 1024.0))) " KB"))
           (println (str "  ✓ Location: " (.getAbsolutePath index-file)))
           (is (> (.length index-file) 1000) "HTML report should have substantial content")
           

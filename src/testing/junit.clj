@@ -83,11 +83,13 @@
 
 (defmacro api-step
   "Execute an API step with REST Assured logging.
-   Automatically wraps SerenityRest calls with proper reporting."
+   Automatically wraps REST Assured calls with proper reporting.
+   Configures relaxed HTTPS validation globally before each step."
   [description f]
   `(step ~description
      (fn []
        (try
+         (io.restassured.RestAssured/useRelaxedHTTPSValidation)
          (let [result# (~f)]
            (SerenityRest/reset)
            result#)
@@ -140,18 +142,33 @@
          (println (str "✗ Step failed: " (.getMessage e#)))
          (throw e#)))))
 
-(defn start-browser []
-  "Start Playwright browser and return page instance"
-  (let [pw (Playwright/create)
-        browser (.launch (.chromium pw) 
-                        (-> (BrowserType$LaunchOptions.)
-                            (.setHeadless true)))
-        context (.newContext browser)
-        page (.newPage context)]
-    {:playwright pw
-     :browser browser
-     :context context
-     :page page}))
+(defn start-browser
+  "Start Playwright browser and return page instance.
+   Options:
+     :headless - boolean, whether to run headless (default true).
+                 Can also be set via system property 'serenity.browser.headless'
+                 or JVM property -Dserenity.browser.headless=false"
+  ([] (start-browser {}))
+  ([opts]
+   (let [headless? (if (contains? opts :headless)
+                     (:headless opts)
+                     (not= "false" (System/getProperty "serenity.browser.headless" "true")))
+         pw (Playwright/create)
+         launch-opts (-> (BrowserType$LaunchOptions.)
+                         (.setHeadless (boolean headless?)))
+         ;; When headed, slow down actions so user can follow along
+         launch-opts (if-not headless?
+                       (.setSlowMo launch-opts 100)
+                       launch-opts)
+         browser (.launch (.chromium pw) launch-opts)
+         context (.newContext browser)
+         page (.newPage context)]
+     (when-not headless?
+       (println "Browser launched in HEADED mode (visible window)"))
+     {:playwright pw
+      :browser browser
+      :context context
+      :page page})))
 
 (defn stop-browser [browser-map]
   "Close browser and Playwright instance"
@@ -172,9 +189,20 @@
          (step \"Navigate to site\" 
            #(.navigate page \"https://example.com\"))
          (step \"Take screenshot\"
-           #(take-screenshot page \"homepage\"))))"
-  [[page-binding] & body]
-  `(let [browser-map# (start-browser)
+           #(take-screenshot page \"homepage\"))))
+   
+   With options:
+     (deftest my-test
+       (with-serenity [page {:headless false}]
+         ;; Browser window will be visible for debugging
+         (step \"Navigate to site\" 
+           #(.navigate page \"https://example.com\"))))
+   
+   Options:
+     :headless - false to show real browser window (default true)
+                 Can also be set globally via -Dserenity.browser.headless=false"
+  [[page-binding & [opts]] & body]
+  `(let [browser-map# (start-browser ~(or opts {}))
          ~page-binding (:page browser-map#)
          event-bus# (StepEventBus/getEventBus)
          story# (Story/withIdAndPathAndFeature 

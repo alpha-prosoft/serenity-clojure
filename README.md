@@ -19,6 +19,31 @@ A powerful, elegant testing library for Clojure that combines **Serenity BDD** r
 
 ## Quick Start
 
+### Interactive REPL (Browser Exploration)
+
+Start an nREPL with a headed browser for interactive exploration:
+
+```bash
+clj -M:nrepl
+```
+
+Then in your editor (or any nREPL client connected to port 7888):
+
+```clojure
+(require '[testing.repl :refer [page restart stop]])
+
+(.navigate @page "https://example.com")
+(.textContent (.locator @page "h1"))   ;; => "Example Domain"
+(.screenshot @page)
+
+;; Use the same Playwright API as in tests
+(.fill (.locator @page "#email") "test@example.com")
+(.click (.locator @page "button"))
+
+(restart)  ;; restart browser
+(stop)     ;; close browser
+```
+
 ### Installation
 
 Add to your `deps.edn`:

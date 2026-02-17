@@ -21,10 +21,6 @@
         lambdaisland/kaocha {:mvn/version "1.91.1392"}
         lambdaisland/kaocha-junit-xml {:mvn/version "1.17.101"}
 
-        ;; Logging (required by Serenity)
-        org.slf4j/slf4j-simple {:mvn/version "2.0.17"}
-        ch.qos.logback/logback-classic {:mvn/version "1.5.32"}
-
         ;; JSON parsing
         org.clojure/data.json {:mvn/version "2.5.2"}}
 
@@ -55,7 +51,9 @@
     :main-opts ["-m" "testing.repl"]}
 
    :deploy
-   {:extra-deps {slipset/deps-deploy {:mvn/version "0.2.2"}}
+   {:extra-deps {slipset/deps-deploy {:mvn/version "0.2.2"}
+                 ch.qos.logback/logback-classic {:mvn/version "1.5.18"}
+                 ch.qos.logback/logback-core {:mvn/version "1.5.18"}}
     :exec-fn deps-deploy.deps-deploy/deploy
     :exec-args {:installer :remote
                 :sign-releases? false}}}}
